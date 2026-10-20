@@ -16,7 +16,7 @@ graph TD
     S4 --> S5["🪜 Step 5: Sign Out Workflow"]
     S5 --> S6["🪜 Step 6: Password Recovery (Forget & Reset Password)"]
     S6 --> S7["🪜 Step 7: Email Verification Flow"]
-    S7 --> S8["🪜 Step 8: Route Protection via Next.js Middleware"]
+    S7 --> S8["🪜 Step 8: Route Protection via Next.js Proxy (proxy.ts)"]
     S8 --> S9["🪜 Step 9: Role-Based Access Control (RBAC with Admin Plugin)"]
 ```
 
@@ -451,30 +451,30 @@ const verifyUserEmail = async (token: string) => {
 
 ---
 
-## 🪜 Step 8: Route Protection via Next.js Middleware
+## 🪜 Step 8: Route Protection via Next.js Proxy (`proxy.ts`)
 
-Better Auth sets a session cookie named `better-auth.session_token`. We can protect private routes instantly at the Edge using Next.js `middleware.ts`.
+In Next.js 16, route protection and edge request filtering are handled using `proxy.ts` (which replaces the legacy `middleware.ts` convention). Better Auth sets a session cookie named `better-auth.session_token` (or `__Secure-better-auth.session_token` on HTTPS). We can guard private and auth routes instantly using Next.js `proxy.ts`.
 
-Create `src/middleware.ts`:
+Create `src/proxy.ts`:
 
 ```typescript
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
-// 1. Define route groups
 const protectedRoutes = ['/dashboard', '/settings', '/profile', '/admin'];
 const authRoutes = ['/login', '/signup', '/forgot-password', '/reset-password'];
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
-  // 2. Read Better Auth session cookie (handles both dev and production HTTPS)
+
+  // Better Auth session cookie check (supporting both development and production HTTPS)
   const sessionToken =
     request.cookies.get('better-auth.session_token')?.value ||
     request.cookies.get('__Secure-better-auth.session_token')?.value;
+
   const isAuthenticated = Boolean(sessionToken);
 
-  // 3. Guard private routes from unauthenticated users
+  // 1. Guard private routes against unauthenticated access
   const isProtected = protectedRoutes.some((route) => pathname.startsWith(route));
   if (isProtected && !isAuthenticated) {
     const loginUrl = new URL('/login', request.url);
@@ -482,7 +482,7 @@ export function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  // 4. Prevent authenticated users from accessing login/signup forms again
+  // 2. Prevent authenticated users from accessing login/signup forms again
   const isAuthRoute = authRoutes.some((route) => pathname.startsWith(route));
   if (isAuthRoute && isAuthenticated) {
     return NextResponse.redirect(new URL('/dashboard', request.url));
